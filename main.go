@@ -1,25 +1,30 @@
 package main
 
 import (
-	"log"
 	"encoding/json"
+	"flag"
 	"io/ioutil"
+	"log"
 	"os/exec"
+	"runtime"
 	"strings"
 )
 
+const TEST_FILE_NAME = "bitcoin-util-test.json"
+const EXE_FILE_NAME = "litecoin-tx"
+
 type BitcoinTests []struct {
-	Exec string `json:"exec"`
-	Args []string `json:"args"`
-	OutputCmp string `json:"output_cmp,omitempty"`
-	Description string `json:"description"`
-	Input string `json:"input,omitempty"`
-	ReturnCode int `json:"return_code,omitempty"`
+	Exec        string   `json:"exec"`
+	Args        []string `json:"args"`
+	OutputCmp   string   `json:"output_cmp,omitempty"`
+	Description string   `json:"description"`
+	Input       string   `json:"input,omitempty"`
+	ReturnCode  int      `json:"return_code,omitempty"`
 }
 
 func WriteFile(path string, data []byte) error {
 	if strings.Contains(path, ".hex") {
-		strings.Replace(string(data), "\n","",-1)
+		strings.Replace(string(data), "\n", "", -1)
 	}
 	err := ioutil.WriteFile(path, data, 0644)
 	if err != nil {
@@ -34,7 +39,7 @@ func OpenFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	if strings.Contains(path, ".hex") {
-		strings.Replace(string(data), "\n","",-1)
+		strings.Replace(string(data), "\n", "", -1)
 	}
 	return data, nil
 }
@@ -69,7 +74,7 @@ func ExecuteLitecoinTX(args []string, exePath, testPath, input, output string) e
 			log.Println("Input matches expected output")
 		} else {
 			log.Println("Updating output cmp file")
-			err = WriteFile(testPath + output, cmdOut)
+			err = WriteFile(testPath+output, cmdOut)
 			if err != nil {
 				return err
 			}
@@ -79,10 +84,29 @@ func ExecuteLitecoinTX(args []string, exePath, testPath, input, output string) e
 	return nil
 }
 
+func IsWindows() bool {
+	return runtime.GOOS == "windows"
+}
+
+func GetOSPathSlash() string {
+	if IsWindows() {
+		return "\\"
+	} else {
+		return "/"
+	}
+}
+
 func main() {
-	testPath := "/home/thrasher/Desktop/dev/litecoin/src/test/data/"
-	jsonFile := testPath + "bitcoin-util-test.json"
-	exePath := "/home/thrasher/Desktop/dev/litecoin/src/litecoin-tx"
+	var path string
+	flag.StringVar(&path, "path", "", "The path to the test data location.")
+	flag.Parse()
+
+	if path == "" {
+		log.Fatal("Invalid test data path.")
+	}
+
+	pathSlash := GetOSPathSlash()
+	jsonFile := path + pathSlash + TEST_FILE_NAME
 
 	data, err := OpenFile(jsonFile)
 	if err != nil {
@@ -91,9 +115,14 @@ func main() {
 
 	tests := BitcoinTests{}
 	json.Unmarshal(data, &tests)
+	exePath := strings.TrimSuffix(path, "test"+pathSlash+"data") + EXE_FILE_NAME
+
+	if IsWindows() {
+		exePath += ".exe"
+	}
 
 	for _, x := range tests {
-		err := ExecuteLitecoinTX(x.Args, exePath, testPath, x.Input, x.OutputCmp)
+		err := ExecuteLitecoinTX(x.Args, exePath, path, x.Input, x.OutputCmp)
 		if err != nil {
 			if strings.Contains(x.Description, "Expected to fail") {
 				continue
@@ -103,5 +132,3 @@ func main() {
 		}
 	}
 }
-
-
